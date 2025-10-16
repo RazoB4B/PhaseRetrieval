@@ -120,6 +120,20 @@ def PhaseDiffuser(_N, _ps, Seed):
     return _phasediffuser
 
 
+def ElipticMask(_size, _rmax, _rmin, _order=1, _a=1, _b=1):
+    _ax = np.linspace(-1, 1, _size)
+    _axX, _axY = np.meshgrid(_ax, _ax)
+
+    _r = np.sqrt(_axX**2 + _axY**2)
+    _theta = np.arctan2(_axY/_b, _axX/_a)
+
+    _mask = np.zeros([_size, _size], dtype='complex')
+    _indX, _indY = np.where((_r<=_rmax) & (_r>=_rmin))
+
+    _mask[_indX, _indY] = np.exp(1j*_order*_theta[_indX, _indY])
+    return _mask
+
+
 def Corr(_Arr1, _Arr2):
     _Arr1 = _Arr1 - np.mean(_Arr1)
     _Arr2 = _Arr2 - np.mean(_Arr2)
@@ -329,8 +343,24 @@ def GetFarField_torch(array, Npad=5, WinSize=5):
     return CropCenter_torch(shifted_fft, n * WinSize)
 
 
+def GetFarDiffuser_torch(array, Npad=5, WinSize=5):
+    """
+    Simulate the far-field (FFT) of a complex 2D array with zero padding and cropping.
+    """
+    n = array.shape[-1]
+    pad = (Npad - 1) * n // 2
+    # Pad (left, right, top, bottom) — note reversed order in F.pad for 2D
+    array_padded = F.pad(array, (pad, pad, pad, pad), mode='constant', value=0)
+    # Apply fftshift, fft2, then fftshift again
+    shifted_input = torch.fft.ifftshift(array_padded, dim=(-2, -1))
+    fft_output = torch.fft.ifft2(shifted_input)
+    shifted_fft = torch.fft.ifftshift(fft_output, dim=(-2, -1))
+    # Crop center
+    return CropCenter_torch(shifted_fft, n * WinSize)
+
+
 def CropCenter_torch(tensor, size):
     """Crop center of a square 2D tensor to the given size"""
     center = tensor.shape[-1] // 2
     half = size // 2
-    return tensor[..., center - half:center + half, center - half:center + half]
+    return tensor[..., center - half:center - half + size, center - half:center - half + size]
